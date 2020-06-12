@@ -49,7 +49,7 @@ func Test_Logger(t *testing.T) {
 	if ColorLog {
 		Convey("Color console output", t, func() {
 			m := Classic()
-			m.Get("/:code:int", func(ctx *Context) (int, string) {
+			m.Get("/:code", func(ctx *Context) (int, string) {
 				return ctx.ParamsInt(":code"), ""
 			})
 

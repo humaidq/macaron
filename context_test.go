@@ -176,8 +176,8 @@ func Test_Context(t *testing.T) {
 		Convey("Get all URL paramaters", func() {
 			m.Get("/:arg/:param/:flag", func(ctx *Context) string {
 				kvs := make([]string, 0, len(ctx.AllParams()))
-				for k, v := range ctx.AllParams() {
-					kvs = append(kvs, k+"="+v)
+				for _, i := range ctx.AllParams() {
+					kvs = append(kvs, i.Key+"="+i.Value)
 				}
 				sort.Strings(kvs)
 				return strings.Join(kvs, ",")
@@ -187,7 +187,7 @@ func Test_Context(t *testing.T) {
 			req, err := http.NewRequest("GET", "/1/2/3", nil)
 			So(err, ShouldBeNil)
 			m.ServeHTTP(resp, req)
-			So(resp.Body.String(), ShouldEqual, ":arg=1,:flag=3,:param=2")
+			So(resp.Body.String(), ShouldEqual, "arg=1,flag=3,param=2")
 		})
 
 		Convey("Get file", func() {

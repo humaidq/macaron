@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/go-macaron/inject"
+	"github.com/julienschmidt/httprouter"
 	"github.com/unknwon/com"
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -91,7 +92,7 @@ type Context struct {
 	*Router
 	Req    Request
 	Resp   ResponseWriter
-	params Params
+	params httprouter.Params
 	Render
 	Locale
 	Data map[string]interface{}
@@ -254,27 +255,37 @@ func (ctx *Context) Params(name string) string {
 	if len(name) == 0 {
 		return ""
 	}
-	if len(name) > 1 && name[0] != ':' {
-		name = ":" + name
+	if len(name) > 1 && name[0] == ':' {
+		name = name[1:]
 	}
-	return ctx.params[name]
+	for _, p := range ctx.params {
+		if p.Key == name {
+			return p.Value
+		}
+	}
+	return ""
 }
 
 // AllParams returns all params.
-func (ctx *Context) AllParams() Params {
+func (ctx *Context) AllParams() httprouter.Params {
 	return ctx.params
 }
 
 // SetParams sets value of param with given name.
 func (ctx *Context) SetParams(name, val string) {
-	if name != "*" && !strings.HasPrefix(name, ":") {
-		name = ":" + name
+	if len(name) > 1 && name != "*" && strings.HasPrefix(name, ":") {
+		name = name[:1]
 	}
-	ctx.params[name] = val
+	for _, p := range ctx.params {
+		if p.Key == name {
+			p.Value = val
+			return
+		}
+	}
 }
 
 // ReplaceAllParams replace all current params with given params
-func (ctx *Context) ReplaceAllParams(params Params) {
+func (ctx *Context) ReplaceAllParams(params httprouter.Params) {
 	ctx.params = params
 }
 

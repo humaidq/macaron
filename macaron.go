@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/julienschmidt/httprouter"
 	"github.com/unknwon/com"
 	"gopkg.in/ini.v1"
 
@@ -113,6 +114,7 @@ type Macaron struct {
 	hasURLPrefix bool
 	urlPrefix    string // For suburl support.
 	*Router
+	httprouter *httprouter.Router
 
 	logger *log.Logger
 }
@@ -127,6 +129,7 @@ func NewWithLogger(out io.Writer) *Macaron {
 		Router:   NewRouter(),
 		logger:   log.New(out, "[Macaron] ", 0),
 	}
+	m.httprouter = httprouter.New()
 	m.Router.m = m
 	m.Map(m.logger)
 	m.Map(defaultReturnHandler())
@@ -217,7 +220,7 @@ func (m *Macaron) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
-	m.Router.ServeHTTP(rw, req)
+	m.httprouter.ServeHTTP(rw, req)
 }
 
 func GetDefaultListenInfo() (string, int) {

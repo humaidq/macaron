@@ -18,7 +18,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -31,29 +30,9 @@ func Test_Router_FastInvoker_Handle(t *testing.T) {
 	test_Router_Handle(t, true)
 }
 
-// handlerFunc0Invoker func()string Invoker Handler
-type handlerFunc0Invoker func() string
-
-// Invoke handlerFunc0Invoker
-func (l handlerFunc0Invoker) Invoke(p []interface{}) ([]reflect.Value, error) {
-	ret := l()
-	return []reflect.Value{reflect.ValueOf(ret)}, nil
-}
-
 func test_Router_Handle(t *testing.T, isFast bool) {
 	Convey("Register all HTTP methods routes", t, func() {
 		m := New()
-
-		if isFast {
-			// FastInvoker Handler Wrap Action
-			m.Router.SetHandlerWrapper(func(h Handler) Handler {
-				switch v := h.(type) {
-				case func() string:
-					return handlerFunc0Invoker(v)
-				}
-				return h
-			})
-		}
 
 		m.Get("/get", func() string {
 			return "GET"
@@ -118,15 +97,6 @@ func test_Router_Handle(t *testing.T, isFast bool) {
 		m.ServeHTTP(resp, req)
 		So(resp.Body.String(), ShouldHaveLength, 0)
 
-		m.Any("/any", func() string {
-			return "ANY"
-		})
-		resp = httptest.NewRecorder()
-		req, err = http.NewRequest("GET", "/any", nil)
-		So(err, ShouldBeNil)
-		m.ServeHTTP(resp, req)
-		So(resp.Body.String(), ShouldEqual, "ANY")
-
 		m.Route("/route", "GET,POST", func() string {
 			return "ROUTE"
 		})
@@ -135,148 +105,6 @@ func test_Router_Handle(t *testing.T, isFast bool) {
 		So(err, ShouldBeNil)
 		m.ServeHTTP(resp, req)
 		So(resp.Body.String(), ShouldEqual, "ROUTE")
-
-		if isFast {
-			//remove Handler Wrap Action
-			m.Router.SetHandlerWrapper(nil)
-		}
-	})
-
-	Convey("Register with or without auto head", t, func() {
-		Convey("Without auto head", func() {
-			m := New()
-			m.Get("/", func() string {
-				return "GET"
-			})
-			resp := httptest.NewRecorder()
-			req, err := http.NewRequest("HEAD", "/", nil)
-			So(err, ShouldBeNil)
-			m.ServeHTTP(resp, req)
-			So(resp.Code, ShouldEqual, 404)
-		})
-
-		Convey("With auto head", func() {
-			m := New()
-			m.SetAutoHead(true)
-			m.Get("/", func() string {
-				return "GET"
-			})
-			resp := httptest.NewRecorder()
-			req, err := http.NewRequest("HEAD", "/", nil)
-			So(err, ShouldBeNil)
-			m.ServeHTTP(resp, req)
-			So(resp.Code, ShouldEqual, 200)
-		})
-	})
-
-	Convey("Register all HTTP methods routes with combo", t, func() {
-		m := New()
-		m.SetURLPrefix("/prefix")
-		m.Use(Renderer())
-		m.Combo("/", func(ctx *Context) {
-			ctx.Data["prefix"] = "Prefix_"
-		}).
-			Get(func(ctx *Context) string { return ctx.Data["prefix"].(string) + "GET" }).
-			Patch(func(ctx *Context) string { return ctx.Data["prefix"].(string) + "PATCH" }).
-			Post(func(ctx *Context) string { return ctx.Data["prefix"].(string) + "POST" }).
-			Put(func(ctx *Context) string { return ctx.Data["prefix"].(string) + "PUT" }).
-			Delete(func(ctx *Context) string { return ctx.Data["prefix"].(string) + "DELETE" }).
-			Options(func(ctx *Context) string { return ctx.Data["prefix"].(string) + "OPTIONS" }).
-			Head(func(ctx *Context) string { return ctx.Data["prefix"].(string) + "HEAD" })
-
-		for name := range _HTTP_METHODS {
-			resp := httptest.NewRecorder()
-			req, err := http.NewRequest(name, "/", nil)
-			So(err, ShouldBeNil)
-			m.ServeHTTP(resp, req)
-			if name == "HEAD" {
-				So(resp.Body.String(), ShouldHaveLength, 0)
-			} else {
-				So(resp.Body.String(), ShouldEqual, "Prefix_"+name)
-			}
-		}
-
-		defer func() {
-			So(recover(), ShouldNotBeNil)
-		}()
-		m.Combo("/").Get(func() {}).Get(nil)
-	})
-
-	Convey("Register duplicated routes", t, func() {
-		r := NewRouter()
-		r.Get("/")
-		r.Get("/")
-	})
-
-	Convey("Register invalid HTTP method", t, func() {
-		defer func() {
-			So(recover(), ShouldNotBeNil)
-		}()
-		r := NewRouter()
-		r.Handle("404", "/", nil)
-	})
-}
-
-func Test_Route_Name(t *testing.T) {
-	Convey("Set route name", t, func() {
-		m := New()
-		m.Get("/", func() {}).Name("home")
-
-		defer func() {
-			So(recover(), ShouldNotBeNil)
-		}()
-		m.Get("/", func() {}).Name("home")
-	})
-
-	Convey("Set combo router name", t, func() {
-		m := New()
-		m.Combo("/").Get(func() {}).Name("home")
-
-		defer func() {
-			So(recover(), ShouldNotBeNil)
-		}()
-		m.Combo("/").Name("home")
-	})
-}
-
-func Test_Router_URLFor(t *testing.T) {
-	Convey("Build URL path", t, func() {
-		m := New()
-		m.Get("/user/:id", func() {}).Name("user_id")
-		m.Get("/user/:id/:name", func() {}).Name("user_id_name")
-		m.Get("cms_:id_:page.html", func() {}).Name("id_page")
-
-		So(m.URLFor("user_id", "id", "12"), ShouldEqual, "/user/12")
-		So(m.URLFor("user_id_name", "id", "12", "name", "unknwon"), ShouldEqual, "/user/12/unknwon")
-		So(m.URLFor("id_page", "id", "12", "page", "profile"), ShouldEqual, "/cms_12_profile.html")
-
-		Convey("Number of pair values does not match", func() {
-			defer func() {
-				So(recover(), ShouldNotBeNil)
-			}()
-			m.URLFor("user_id", "id")
-		})
-
-		Convey("Empty pair value", func() {
-			defer func() {
-				So(recover(), ShouldNotBeNil)
-			}()
-			m.URLFor("user_id", "", "")
-		})
-
-		Convey("Empty route name", func() {
-			defer func() {
-				So(recover(), ShouldNotBeNil)
-			}()
-			m.Get("/user/:id", func() {}).Name("")
-		})
-
-		Convey("Invalid route name", func() {
-			defer func() {
-				So(recover(), ShouldNotBeNil)
-			}()
-			m.URLFor("404")
-		})
 	})
 }
 
@@ -335,13 +163,13 @@ func Test_Router_InternalServerError(t *testing.T) {
 func Test_Router_splat(t *testing.T) {
 	Convey("Register router with glob", t, func() {
 		m := New()
-		m.Get("/*", func(ctx *Context) string {
-			return ctx.Params("*")
+		m.Get("/*glob", func(ctx *Context) string {
+			return ctx.Params("glob")
 		})
 		resp := httptest.NewRecorder()
 		req, err := http.NewRequest("GET", "/hahaha", nil)
 		So(err, ShouldBeNil)
 		m.ServeHTTP(resp, req)
-		So(resp.Body.String(), ShouldEqual, "hahaha")
+		So(resp.Body.String(), ShouldEqual, "/hahaha")
 	})
 }
