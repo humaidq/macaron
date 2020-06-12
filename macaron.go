@@ -110,6 +110,7 @@ type Macaron struct {
 	befores  []BeforeHandler
 	handlers []Handler
 	action   Handler
+	pool     sync.Pool
 
 	hasURLPrefix bool
 	urlPrefix    string // For suburl support.
@@ -130,6 +131,12 @@ func NewWithLogger(out io.Writer) *Macaron {
 		logger:   log.New(out, "[Macaron] ", 0),
 	}
 	m.httprouter = httprouter.New()
+	// Create context pool to reduce allocations
+	m.pool = sync.Pool{
+		New: func() interface{} {
+			return new(Context)
+		},
+	}
 	m.Router.m = m
 	m.Map(m.logger)
 	m.Map(defaultReturnHandler())
@@ -190,22 +197,32 @@ func (m *Macaron) Use(handler Handler) {
 }
 
 func (m *Macaron) createContext(rw http.ResponseWriter, req *http.Request) *Context {
-	c := &Context{
-		Injector: inject.New(),
-		handlers: m.handlers,
-		action:   m.action,
-		index:    0,
-		Router:   m.Router,
-		Req:      Request{req},
-		Resp:     NewResponseWriter(req.Method, rw),
-		Render:   &DummyRender{rw},
-		Data:     make(map[string]interface{}),
+	c := m.pool.Get().(*Context)
+	c.Injector = inject.New()
+	c.handlers = m.handlers
+	c.action = m.action
+	c.index = 0
+	c.Router = m.Router
+	c.Req = Request{req}
+	c.Resp = NewResponseWriter(req.Method, rw)
+	c.Render = &DummyRender{rw}
+	// We are clearing map, to reduce allocation
+	if c.Data != nil {
+		for k := range c.Data {
+			delete(c.Data, k)
+		}
+	} else {
+		c.Data = make(map[string]interface{})
 	}
 	c.SetParent(m)
 	c.Map(c)
 	c.MapTo(c.Resp, (*http.ResponseWriter)(nil))
 	c.Map(req)
 	return c
+}
+
+func (m *Macaron) releaseContext(c *Context) {
+	m.pool.Put(c)
 }
 
 // ServeHTTP is the HTTP Entry point for a Macaron instance.
